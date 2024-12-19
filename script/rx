@@ -1,0 +1,26 @@
+#!perl
+use v5.30;
+
+use App::rx;
+use constant EX_SUCCESS  => 0;
+
+my $result = App::rx->run(@ARGV);
+
+if( $result->@* == 0 ) {
+	exit(EX_SUCCESS)
+	}
+elsif( $result->@* == 1 and exists $result->[0]{exit_code} ) {
+	my $message = $result->[0]{message};
+	say "!!!! $message";
+	exit( $result->[0]{exit_code} );
+	}
+
+foreach my $error ( $result->@* ) {
+	my $message = $error->{message};
+	$message =~ s/^/\t/gm;
+	say "!!!! $error->{file}\n$message"
+	}
+
+exit( 1 );
+
+1;
