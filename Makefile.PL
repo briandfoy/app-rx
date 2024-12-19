@@ -67,7 +67,7 @@ my %WriteMakefile = (
 		},
 
 	'PREREQ_PM' => {
-		'Carp' => '0',
+		'Data::Rx' => '0',
 		},
 
 	'META_MERGE' => {
