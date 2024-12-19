@@ -6,6 +6,17 @@ no warnings;
 
 our $VERSION = '0.001_01';
 
+use v5.30;
+use experimental qw(signatures);
+
+use constant F_YAML => 'YAML';
+use constant F_JSON => 'JSON';
+
+use constant EX_SUCCESS  => 0;
+use constant EX_ARGS     => 2;
+use constant EX_BAD_SPEC => 4;
+use constant EX_MISSING_DATA_RX => 8;
+
 =encoding utf8
 
 =head1 NAME
@@ -22,20 +33,13 @@ App::rx - Apply an Rx specification to data files
 
 =item run( SPEC_FILE, FILES )
 
+Validate the list of C<FILES> with the Rx specifcation in C<SPEC_FILE>.
+
+This returns an array ref of hash references. If there are no items in
+that array ref, there was no error.
+
 =cut
 
-use v5.30;
-use experimental qw(signatures);
-
-run(@ARGV) unless caller;
-
-use constant F_YAML => 'YAML';
-use constant F_JSON => 'JSON';
-
-use constant EX_SUCCESS  => 0;
-use constant EX_ARGS     => 2;
-use constant EX_BAD_SPEC => 4;
-use constant EX_MISSING_DATA_RX => 8;
 
 sub run ( $class, $spec_file, @files ) {
 	state $rc = eval { require Data::Rx };
@@ -96,6 +100,52 @@ sub run ( $class, $spec_file, @files ) {
 	return \@errors;
 	}
 
+=item detect_format( FILE )
+
+Return a value to indicate the file type guessed by the file extension.
+
+Later this might be more sophisticated.
+
+=cut
+
+sub detect_format($class, $file) {
+	my $format = do {
+		local $_ = $file;
+		if( /\.json/ ) { F_JSON }
+		elsif( /\.ya?ml/ ) { F_YAML }
+		};
+
+	return $format if defined $format;
+
+	return;
+	}
+
+=item json_load_file( FILE )
+
+Load a JSON file, decode it, and return the data structure.
+
+This will throw an exception from the L<JSON> module if there is a
+problem.
+
+=cut
+
+sub json_load_file ($class, $file) {
+	state $rc = require JSON;
+	my $input = $class->slurp_raw( $file );
+	JSON::decode_json( $input );
+	}
+
+=item load_file( FILE )
+
+Load the file and interpret its contents according to its file
+type. This is the way you should load files in higher level code.
+Most of the other subroutines merely support this subroutine.
+
+This may throw an exception from the L<JSON> or L<YAML> modules if
+the formats are bad.
+
+=cut
+
 sub load_file ($class, $file) {
 	my $format = $class->detect_format($file);
 
@@ -113,27 +163,21 @@ sub load_file ($class, $file) {
 	return $data;
 	}
 
-sub detect_format($class, $file) {
-	my $format = do {
-		local $_ = $file;
-		if( /\.json/ ) { F_JSON }
-		elsif( /\.ya?ml/ ) { F_YAML }
-		};
+=item slurp_raw( FILE )
 
-	return $format if defined $format;
+Read all the contents of C<FILE> and return the raw octets.
 
-	return;
-	}
-
-sub json_load_file ($class, $file) {
-	state $rc = require JSON;
-	my $input = $class->slurp_raw( $file );
-	JSON::decode_json( $input );
-	}
+=cut
 
 sub slurp_raw ($class, $file) {
 	do { local $/; open my $fh, '<:raw', $file; <$fh> };
 	}
+
+=item slurp_utf8( FILE )
+
+Read all the contents of C<FILE> and decode those as UTF-8.
+
+=cut
 
 sub slurp_utf8 ($class, $file) {
 	do { local $/; open my $fh, '<:encoding(UTF8)', $file; <$fh> };
@@ -143,9 +187,17 @@ sub slurp_utf8 ($class, $file) {
 
 =head1 TO DO
 
+Lots of stuff. I'm just starting this.
 
 =head1 SEE ALSO
 
+=over 4
+
+=item L<Data::Rx>
+
+=item L<https://rx.codesimply.com>
+
+=back
 
 =head1 SOURCE AVAILABILITY
 
