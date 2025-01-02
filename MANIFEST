@@ -7,6 +7,12 @@ MANIFEST			This list of files
 MANIFEST.SKIP
 README.pod
 script/rx
+SECURITY.md
+t/010-version-help.t
+t/corpus/specs/bad_spec.json
+t/corpus/specs/good_spec.json
+t/corpus/specs/invalid_format_spec.json
+t/lib/Local/Util.pm
 t/load.t
 t/pod.t
 t/pod_coverage.t
