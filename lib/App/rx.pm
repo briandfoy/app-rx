@@ -9,6 +9,8 @@ our $VERSION = '0.001_01';
 use v5.30;
 use experimental qw(signatures);
 
+use Getopt::Long;
+
 use constant F_YAML => 'YAML';
 use constant F_JSON => 'JSON';
 
@@ -16,6 +18,8 @@ use constant EX_SUCCESS  => 0;
 use constant EX_ARGS     => 2;
 use constant EX_BAD_SPEC => 4;
 use constant EX_MISSING_DATA_RX => 8;
+
+use Mojo::Util qw(dumper);
 
 =encoding utf8
 
@@ -31,7 +35,123 @@ App::rx - Apply an Rx specification to data files
 
 =over 4
 
-=item run( SPEC_FILE, FILES )
+=item run
+
+=cut
+
+sub run ( $class, @args ) {
+	state $rc = do {
+		require Getopt::Long;
+		Getopt::Long::Configure( qw(no_ignore_case bundling) );
+		};
+
+	bless my $self = {}, $class;
+
+	my( $opts, $spec ) = $self->getoptions_spec;
+	my $ret = Getopt::Long::GetOptionsFromArray( \@args, @$spec );
+
+	if( $opts->{help} ) {
+		$self->output( $self->help_message );
+		exit EX_SUCCESS;
+		}
+
+	if( $opts->{version} ) {
+		$self->output( $self->version_message );
+		exit EX_SUCCESS;
+		}
+
+	my( $spec_file, @files ) = @args;
+	unless( defined $spec_file ) {
+		$self->error_output( "No arguments!" );
+		exit EX_ARGS;
+		}
+
+	my $schema;
+	CHECK_SPEC: {
+		my $result = $self->check_spec( $spec_file );
+		my $had_errors = ref $result eq ref [];
+
+		if( $opts->{check_spec_only} ) {
+			$self->output( "Spec <$spec_file> " . ( $had_errors ? "has problems" : "compiles" ) );
+			if( $had_errors ) {
+				foreach my $hash ( $result->@* ) {
+					$self->error_output( "* " . $hash->{message} );
+					}
+				}
+			}
+
+		exit( $had_errors ) if $opts->{check_spec_only};
+
+		$schema = $result;
+		}
+
+	unless( @files ) {
+		push @files, '-';
+		}
+
+	my $result = $self->check_files( $opts, $schema, @files );
+
+	}
+
+=item error_output( MESSAGES )
+
+=cut
+
+sub error_output ($self, @messages) {
+	chomp(@messages);
+	say STDERR join "\n", @messages;
+	}
+
+=item getoptions_spec
+
+=cut
+
+sub getoptions_spec ($self) {
+	my $opts = {};
+
+	return ($opts, [
+		'h|help'       => \$opts->{help},
+		'v|version'    => \$opts->{version},
+		'V|verbose'    => \$opts->{verbose},
+		'c|check-spec-only' => \$opts->{check_spec_only},
+		'j|json'       => \$opts->{json},
+		]),
+	}
+
+=item help_message
+
+=cut
+
+sub help_message ($class) {
+	"This is the help message";
+	}
+
+=item output( MESSAGES )
+
+=cut
+
+sub output ($self, @messages) {
+	chomp(@messages);
+	say STDOUT join "\n", @messages;
+	}
+
+=item version_message
+
+=cut
+
+sub version_message ($class) {
+	require File::Basename;
+	sprintf "%s version %s", File::Basename::basename($0), $VERSION;
+	}
+
+
+=back
+
+=head2 Instance methods
+
+=over 4
+
+=item check_files( SPEC_FILE, FILES )
 
 Validate the list of C<FILES> with the Rx specifcation in C<SPEC_FILE>.
 
@@ -41,14 +161,66 @@ that array ref, there was no error.
 =cut
 
 
-sub run ( $class, $spec_file, @files ) {
+sub check_files ( $self, $opts, $schema, @files ) {
+	my @errors;
+
+	say "check_files: " . "OPTS: " . dumper( $opts ), "\nFILES: " . dumper(\@files);
+
+	FILE: foreach my $file ( @files ) {
+		say STDERR "===== $file";
+		my $input;
+		if( $file eq '-' ) {
+			$self->error_output( "Waiting for input on standard input" );
+			$input = do { local $/; <STDIN> };
+			}
+		else {
+			if( ! -e $file ) {
+				push @errors, { file => $file, message => 'file does not exist' };
+				next FILE;
+				}
+			elsif( ! -r $file ) {
+				push @errors, { file => $file, message => 'file is not readable' };
+				next FILE;
+				}
+
+			$input = eval { $self->load_file($file) } if $file ne '-';
+			if( $@ ) {
+				my $at = $@;
+				$at =~ s/.*\K\h+ at \h+ .*? Rx\.pm \h+ line \h+ \d+ .*//xsi;
+				return [ { file => $file, message =>  "Could not load data file <$file>\n$at" } ];
+				}
+			}
+
+		unless( defined $input ) {
+			push @errors, { file => $file, message => "file could not be read: $!" };
+			next FILE;
+			}
+
+		my $result = eval { $schema->assert_valid($input) };
+		my $at = $@;
+
+		next FILE unless eval { $at->can('failures') };
+
+		foreach my $failure ( $at->failures ) {
+			push @errors, { file => $file, message => $failure->error_string };
+			}
+		}
+
+	return \@errors;
+	}
+
+=item check_spec( SPEC_FILE )
+
+=cut
+
+sub check_spec ( $self, $spec_file ) {
 	state $rc = eval { require Data::Rx };
 	return [ { file => $0, message =>  "This program needs the Data::Rx Perl module, but did not find it\nYou can install it with `cpan Data::Rx`", exit_code => EX_MISSING_DATA_RX } ]
 		unless $rc;
 
 	my @errors;
 
-	my $spec = eval { $class->load_file($spec_file) };
+	my $spec = eval { $self->load_file($spec_file) };
 	unless( defined $spec ) {
 		my $at = $@;
 		$at =~ s/\h+ at \h+ .*? Rx\.pm \h+ line \h+ \d+ .*//xs;
@@ -63,41 +235,7 @@ sub run ( $class, $spec_file, @files ) {
 		return [ { file => $spec_file, message =>  "Could not load Rx schema from <$spec_file>\n$at", exit_code => EX_BAD_SPEC } ];
 		}
 
-	push @files, '-' unless @files;
-
-	FILE: foreach my $file ( @files ) {
-		my $input;
-		if( $file eq '-' ) {
-			$input = do { local $/; <STDIN> };
-			}
-
-		if( ! -e $file ) {
-			push @errors, { file => $file, message => 'file does not exist' };
-			next FILE;
-			}
-		elsif( ! -r $file ) {
-			push @errors, { file => $file, message => 'file is not readable' };
-			next FILE;
-			}
-
-		$input = eval { $class->load_file($file) } if $file ne '-';
-		if( $@ ) {
-			my $at = $@;
-			$at =~ s/.*\K\h+ at \h+ .*? Rx\.pm \h+ line \h+ \d+ .*//xsi;
-			return [ { file => $file, message =>  "Could not load data file <$spec_file>\n$at" } ];
-			}
-
-
-		unless( defined $input ) {
-			push @errors, { file => $file, message => "file could not be read: $!" };
-			next FILE;
-			}
-
-		my $result = eval { $schema->assert_valid($input) };
-		push @errors, { file => $file, message => $@ } unless $result == 1;
-		}
-
-	return \@errors;
+	return $schema;
 	}
 
 =item detect_format( FILE )

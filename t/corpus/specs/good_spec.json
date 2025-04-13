@@ -1,0 +1,46 @@
+{
+  "type": "//rec",
+  "required": {
+    "_description": {
+      "type": "//str"
+    },
+    "_source": {
+      "type": "//str"
+    },
+    "_data": {
+      "values": {
+        "required": {
+          "arch": {
+            "contents": "//str",
+            "type": "//arr"
+          },
+          "perl_versions": {
+            "type": "//arr",
+            "contents": "//str"
+          },
+          "os_versions": {
+            "type": "//arr",
+            "contents": "//str"
+          },
+          "source": {
+            "type": "//str"
+          },
+          "os": {
+            "type": "//str"
+          },
+          "name": {
+            "type": "//str"
+          },
+          "default": {
+            "type": "//str"
+          }
+        },
+        "type": "//rec"
+      },
+      "type": "//map"
+    },
+    "_version": {
+      "type": "//str"
+    }
+  }
+}
