@@ -19,8 +19,6 @@ use constant EX_ARGS     => 2;
 use constant EX_BAD_SPEC => 4;
 use constant EX_MISSING_DATA_RX => 8;
 
-use Mojo::Util qw(dumper);
-
 =encoding utf8
 
 =head1 NAME
@@ -163,8 +161,6 @@ that array ref, there was no error.
 
 sub check_files ( $self, $opts, $schema, @files ) {
 	my @errors;
-
-	say "check_files: " . "OPTS: " . dumper( $opts ), "\nFILES: " . dumper(\@files);
 
 	FILE: foreach my $file ( @files ) {
 		say STDERR "===== $file";
